@@ -66,6 +66,38 @@ run again:
 Afterwards: `./install.sh --check` re-runs the check, `./install.sh --uninstall` removes Omaspot (keeping Soloist,
 your credentials and sign-in), and `./install.sh --yes` installs without questions. You need **Spotify Premium**.
 
+### What the installer changes on your system
+
+Everything goes into your home folder, except the packages and the optional firewall rules. Configs are backed up
+before they're edited.
+
+| What | Where |
+|---|---|
+| Packages (only missing ones) | `python-textual python-httpx python-pillow python-dbus-fast kitty cava jq`, via `omarchy pkg add` |
+| Commands | `~/.local/bin/omaspot`, `omaspot-overlay`, `soloist-update` |
+| Soloist | Spotify's official build, downloaded from Spotify's CDN, plus `~/.local/lib/soloist-fixport.so` (compiled from `soloist/fixport.c`; loaded into Soloist only, it pins the pairing port to 47621) |
+| Background services (systemd `--user`) | `soloist`, `soloist-mpris` (media keys), `soloist-update.timer` (weekly) |
+| Hyprland | `~/.config/hypr/omaspot.lua` and one `require("hypr.omaspot")` line at the end of `hyprland.lua`. **Super+M is rebound** to Omaspot (Omarchy uses it for "minimize window to the dock") |
+| Omarchy | the theme-set hook `omaspot-theme`, the bar widget, and an app launcher entry (`~/.local/share/applications/omaspot.desktop`) |
+| Firewall (optional, asks first, `sudo`) | only if `ufw` is on: UDP 5353 and TCP 47621 from your local network, so your phone can find Soloist |
+| Other plugins | if the `decent-workspaces` bar widget is installed, one marked rule is added to its `IconRules.js` (a record icon for Omaspot's window) |
+
+`--uninstall` undoes the above except: Soloist and its `soloist` service, `~/.config/soloist` (your credentials),
+`~/.config/omaspot` (settings, window config),
+your sign-in, the installed packages, the firewall rules (remove them with `sudo ufw status numbered` and
+`sudo ufw delete <n>`) and the `decent-workspaces` icon rule. When Omaspot was added as a plugin, remove the
+plugin itself with `omarchy plugin remove PrashantGC00.omaspot`.
+
+### Privacy and security
+
+- Your Client ID and Soloist API key stay in `~/.config/soloist/.env` (mode 600). The installer reads the key
+  hidden and hands it to Soloist on stdin, never on a command line. Your Spotify sign-in token is saved to
+  `~/.cache/omaspot/token.json` (mode 600). Nothing is sent anywhere except Spotify.
+- Sign-in uses OAuth PKCE (no client secret); the one-time callback server listens only on `127.0.0.1:8888`.
+- Soloist's control WebSocket has no password, so it's bound to `127.0.0.1`: programs on your computer can
+  control playback, nothing on your network can.
+- Plugins aren't sandboxed. Read `install.sh` before running it; it's commented step by step.
+
 ## Use
 
 | Key | Action | Key | Action |
@@ -85,8 +117,8 @@ opens a popup with the cover, controls, the list of players, **Open Omaspot** an
 Mouse works everywhere: double-click plays, right-click opens a menu, click the artist or album to open it.
 
 **Preferences** (in the sidebar) switches features on and off and sets the window's opacity and background
-colour: album colours, header wash, music waves and their strength, Turntable's beat pulse, smooth scrolling and
-song notifications, and **keyboard shortcuts** (change any key: pick the action, press the new key). Changes apply at once
+colour: album colours, header wash, Turntable's beat pulse, smooth scrolling (one row per wheel tick) and song
+notifications, and **keyboard shortcuts** (change any key: pick the action, press the new key). Changes apply at once
 and are saved to `~/.config/omaspot/settings.json`.
 
 `soloist-update --status` shows how many days the installed Soloist build has left.
