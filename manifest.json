@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "PrashantGC00.omaspot",
+  "name": "Omaspot",
+  "version": "1.0.0",
+  "author": "PrashantGC00",
+  "description": "Omaspot: a drop-down Spotify player for Omarchy, playing through Spotify Soloist (Super+M). The bar widget is a record that spins while Spotify plays, with a scrolling now-playing title and controls for any media player. Click it once after adding the plugin: an Install button runs the guided setup (Spotify credentials, Soloist, media keys, Super+M).",
+  "homepage": "https://github.com/PrashantGC00/omaspot",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omaspot",
+    "description": "Now playing, media controls, and the Omaspot player",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

@@ -1,0 +1,87 @@
+#!/bin/bash
+# soloist-update: keep Spotify Soloist current. Builds expire 90 days after their build date and then exit
+# with code 10, so this runs weekly (soloist-update.timer) and whenever soloist.service exits with 10.
+#
+#   soloist-update            check the CDN, install a newer build, restart the service
+#   soloist-update --force    reinstall even if the build number is the same
+#   soloist-update --status   show the installed build and how many days it has left
+#
+# Downloads Spotify's official tarball (not redistributed). The CDN's ETag is remembered, so a weekly check
+# that finds nothing new is one HEAD request. The previous binary is kept as soloist.prev.
+set -euo pipefail
+
+URL="https://soloist-builds.spotifycdn.com/soloist_release_x86_64.tar.gz"
+BIN="$HOME/.local/bin/soloist"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/soloist-update"
+LIFETIME_DAYS=90
+WARN_DAYS=14
+FORCE=0
+
+log() { echo "soloist-update: $*"; }
+notify() { command -v notify-send >/dev/null && notify-send -a "Soloist" "$@" || true; }
+
+build_of() { sed -n 's/.* build \([0-9]\{6,\}\) .*/\1/p' <<<"$1"; }       # unix time of the build
+days_left() { echo $(( ($1 + LIFETIME_DAYS * 86400 - $(date +%s)) / 86400 )); }
+
+installed=""
+[ -x "$BIN" ] && installed=$("$BIN" --version 2>/dev/null || true)
+cur_build=$(build_of "$installed")
+
+case "${1:-}" in
+    --status)
+        if [ -n "$cur_build" ]; then
+            log "$installed"
+            log "expires in $(days_left "$cur_build") days ($(date -d "@$((cur_build + LIFETIME_DAYS * 86400))" +%F))"
+        else
+            log "not installed or not runnable ($BIN)"
+        fi
+        exit 0 ;;
+    --force) FORCE=1 ;;
+    "") ;;
+    *) echo "usage: soloist-update [--force|--status]" >&2; exit 2 ;;
+esac
+
+mkdir -p "$STATE"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# only download when the CDN's file changed. It ignores If-None-Match (always 200), so compare its ETag
+# from a HEAD request ourselves; a check that finds nothing new costs one small request, not 14 MB.
+etag=$(curl --fail --silent --show-error --location --retry 5 --retry-connrefused --retry-delay 10 --max-time 60 \
+            --head "$URL" | tr -d '\r' | sed -n 's/^etag: *//Ip' | tail -1)
+if [ "$FORCE" = 0 ] && [ -n "$cur_build" ] && [ -n "$etag" ] && [ "$etag" = "$(cat "$STATE/etag" 2>/dev/null)" ]; then
+    left=$(days_left "$cur_build")
+    log "no new build on the CDN; installed build has $left days left"
+    if [ "$left" -le "$WARN_DAYS" ]; then
+        notify -u critical "Soloist expires in $left days" "Spotify hasn't published a newer build yet. omaspot stops playing when it expires."
+    fi
+    exit 0
+fi
+curl --fail --silent --show-error --location --retry 5 --retry-connrefused --retry-delay 10 --max-time 600 \
+     -o "$work/soloist.tar.gz" "$URL"
+
+mkdir "$work/x"
+tar -xzf "$work/soloist.tar.gz" -C "$work/x" --no-same-owner
+new=$(find "$work/x" -type f -name soloist -perm -u+x | head -1)
+[ -n "$new" ] || { log "no soloist binary in the archive"; exit 1; }
+new_version=$("$new" --version 2>/dev/null) || { log "the downloaded build doesn't run"; exit 1; }
+new_build=$(build_of "$new_version")
+[ -n "$new_build" ] || { log "can't read the build number from: $new_version"; exit 1; }
+
+[ -n "$etag" ] && printf '%s\n' "$etag" > "$STATE/etag"
+
+if [ "$FORCE" = 0 ] && [ -n "$cur_build" ] && [ "$new_build" -le "$cur_build" ]; then
+    log "already current: $installed"
+    exit 0
+fi
+
+[ -x "$BIN" ] && cp -f "$BIN" "$BIN.prev"
+install -Dm755 "$new" "$BIN.new"
+mv -f "$BIN.new" "$BIN"                         # atomic swap: the service never sees a half-written binary
+log "installed: $new_version ($(days_left "$new_build") days left)"
+
+if systemctl --user cat soloist.service >/dev/null 2>&1; then
+    systemctl --user reset-failed soloist.service 2>/dev/null || true
+    systemctl --user restart soloist.service
+fi
+notify "Soloist updated" "$new_version"

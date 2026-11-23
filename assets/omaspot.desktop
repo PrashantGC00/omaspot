@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Omaspot
+GenericName=Spotify player
+Comment=Drop-down Spotify player for Omarchy (plays through Spotify Soloist)
+Exec=@BIN@/omaspot
+Icon=omaspot
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=spotify;music;player;vinyl;
+StartupWMClass=omaspot
+StartupNotify=false

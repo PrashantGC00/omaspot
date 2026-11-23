@@ -1,0 +1,23 @@
+[Unit]
+Description=Spotify Soloist (Spotify Connect device "Omarchy")
+Wants=pipewire.service
+After=pipewire.service network-online.target
+
+[Service]
+# API key is stored in Soloist itself (soloist setup-api-key); data dir stays at ~/.local/share/soloist.
+# fixport pins the ZeroConf pairing port so ufw needs one rule (tcp 47621 from the LAN).
+Environment=LD_PRELOAD=%h/.local/lib/soloist-fixport.so
+Environment=SOLOIST_ZC_PORT=47621
+# user units can't order after network-online.target, so wait for DNS ourselves (max ~60 s);
+# without this the saved-session login fails at boot and Soloist doesn't retry
+ExecStartPre=/bin/sh -c 'for i in $(seq 30); do getent hosts apresolve.spotify.com >/dev/null && exit 0; sleep 2; done; exit 0'
+TimeoutStartSec=90
+ExecStart=%h/.local/bin/soloist --device-name Omarchy --ws 127.0.0.1:0 --initial-volume 40
+Restart=on-failure
+RestartSec=5
+# exit code 10 = build expired: don't restart-loop, fetch a new build instead (soloist-update restarts us)
+RestartPreventExitStatus=10
+ExecStopPost=/bin/sh -c 'if [ "$EXIT_STATUS" = 10 ]; then systemctl --user start --no-block soloist-update.service; fi'
+
+[Install]
+WantedBy=default.target

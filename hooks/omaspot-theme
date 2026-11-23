@@ -1,0 +1,15 @@
+#!/bin/bash
+# Omarchy theme-set hook (installed with: omarchy hook install theme-set hooks/omaspot-theme)
+# Recolours omaspot and its kitty window after `omarchy theme set`. omaspot reads the theme's colors.toml itself;
+# this only updates the kitty window's see-through colours and tells both to reload.
+colors="$HOME/.local/state/omarchy/current/theme/colors.toml"
+conf="$HOME/.config/omaspot/kitty-overlay.conf"
+get() { sed -n "s/^$1 *= *\"\(#[0-9a-fA-F]\{6\}\)\".*/\1/p" "$colors" | head -1; }
+
+bg=$(get background); panel=$(get dark_background); sel=$(get selection)
+if [[ -f $conf && -n $bg ]]; then
+    sed -i "s/^background #.*/background $bg/; s/^transparent_background_colors .*/transparent_background_colors $bg@0.82 ${panel:-$bg}@0.88 ${sel:-$bg}@0.92/" "$conf"
+    pkill -USR1 -f 'kitty .*--class omaspot' || true      # kitty re-reads its config on SIGUSR1
+fi
+pkill -USR1 -f '^/usr/bin/python3 -m omaspot' || true                # omaspot reloads its colours on SIGUSR1
+exit 0

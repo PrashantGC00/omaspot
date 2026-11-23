@@ -1,0 +1,72 @@
+#!/bin/bash
+# omaspot-overlay: one Omaspot window, two ways to see it.
+#   toggle   Super+M: the drop-down overlay (special workspace "omaspot")
+#   here     the app launcher: bring the window into the current workspace and focus it
+#   show / hide / isOpen / ensureRunning   the overlay, for scripts and for omaspot itself
+# The window is never duplicated: Super+M takes a window that's sitting in a normal workspace back into the
+# overlay, and the launcher pulls it out of the overlay, instead of starting a second copy.
+set -u
+WS="special:omaspot"
+
+is_open() {
+    hyprctl monitors -j 2>/dev/null | jq -e --arg ws "$WS" 'any(.[]; .specialWorkspace.name == $ws)' >/dev/null
+}
+toggle_special() { hyprctl dispatch 'hl.dsp.workspace.toggle_special("omaspot")' >/dev/null; }
+
+# "<workspace name> <address>" of the Omaspot window (the most recently used one), or nothing
+window() {
+    hyprctl clients -j 2>/dev/null |
+        jq -r '[.[] | select(.class == "omaspot")] | sort_by(.focusHistoryID) | first | select(.) | "\(.workspace.name) \(.address)"'
+}
+
+# there should only ever be one: keep the most recently used window, close any extra copy (music lives in Soloist)
+dedupe() {
+    local extra
+    for extra in $(hyprctl clients -j 2>/dev/null |
+                   jq -r '[.[] | select(.class == "omaspot")] | sort_by(.focusHistoryID) | .[1:] | .[].address'); do
+        hyprctl dispatch "hl.dsp.window.close({ window = \"address:$extra\" })" >/dev/null
+    done
+}
+
+move() {    # move <address> <workspace> <follow: true|false>
+    hyprctl dispatch "hl.dsp.window.move({ workspace = \"$2\", follow = $3, window = \"address:$1\" })" >/dev/null
+}
+
+toggle() {
+    local ws addr cur
+    dedupe
+    read -r ws addr <<<"$(window)"
+    if [ -n "${addr:-}" ] && [ "${ws#special:}" = "$ws" ]; then          # it's in a normal workspace
+        cur=$(hyprctl activeworkspace -j | jq -r '.name')
+        move "$addr" "$WS" false                                         # put it into the overlay
+        [ "$ws" = "$cur" ] || is_open || toggle_special                 # here: hide it; elsewhere: show the overlay
+    else
+        toggle_special                                                   # (an empty overlay starts Omaspot)
+    fi
+}
+
+here() {     # exit 1 when there's no window yet (the caller opens one)
+    local ws addr cur
+    dedupe
+    read -r ws addr <<<"$(window)"
+    [ -n "${addr:-}" ] || return 1
+    cur=$(hyprctl activeworkspace -j | jq -r '.id')
+    [ "$ws" = "$cur" ] || [ "$ws" = "$(hyprctl activeworkspace -j | jq -r '.name')" ] || move "$addr" "$cur" true
+    hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null
+}
+
+case "${1:-toggle}" in
+    toggle) toggle ;;
+    here) here ;;
+    spawn)       # the overlay's workspace hook: start Omaspot unless a window already exists
+        [ -z "$(window)" ] || exit 0
+        exec kitty -c "$HOME/.config/omaspot/kitty-overlay.conf" --class omaspot --title omaspot \
+            env OMASPOT_WINDOW=1 "$HOME/.local/bin/omaspot" ;;
+    show) is_open || toggle_special ;;
+    hide) ! is_open || toggle_special ;;
+    isOpen|is-open) is_open && echo yes || { echo no; exit 1; } ;;
+    ensureRunning|ensure-running)
+        systemctl --user is-active --quiet soloist || systemctl --user start soloist
+        is_open || toggle_special ;;
+    *) echo "usage: omaspot-overlay [toggle|here|spawn|show|hide|isOpen|ensureRunning]" >&2; exit 2 ;;
+esac

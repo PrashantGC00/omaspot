@@ -1,0 +1,883 @@
+<title>Spotify Overlay</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&display=swap">
+<style>
+/* Layout: the page reads like a terminal session. One monospace column, sections ruled like TUI panes (── title ────), square edges everywhere, a status line at the foot. */
+:root {
+  /* page, dark-first to match the Solitude desktop it will live on */
+  --bg: #101315;
+  --surface: #14181a;
+  --line: #2f363a;
+  --fg: #cacccc;
+  --hi: #e4e6e7;
+  --muted: #7d858a;
+  --accent: #a8adb0;
+  --warn: #de6145;
+  --sel-bg: #343d41;
+  color-scheme: dark;
+
+  /* terminal mockup: always the Solitude palette, in both page themes */
+  --t-bg: #101315;
+  --t-panel: #0c0e10;
+  --t-sel: #343d41;
+  --t-fg: #cacccc;
+  --t-dim: #4b4e55;
+  --t-soft: #a5aeb4;
+  --t-accent: #798186;
+  --t-hi: #d9dbdc;
+  --t-border: #a8adb0;
+  --desk: #080a0b;
+
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #eceeef; --surface: #f6f7f7; --line: #c9cfd2; --fg: #1d2225; --hi: #0b0e10;
+    --muted: #5c6569; --accent: #4f585d; --warn: #b8432a; --sel-bg: #d6dbde; color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #eceeef; --surface: #f6f7f7; --line: #c9cfd2; --fg: #1d2225; --hi: #0b0e10;
+  --muted: #5c6569; --accent: #4f585d; --warn: #b8432a; --sel-bg: #d6dbde; color-scheme: light;
+}
+
+* { box-sizing: border-box; border-radius: 0 !important; }
+::selection { background: var(--sel-bg); color: var(--hi); }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 14px/1.65 var(--f-mono);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 48px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+.prose { max-width: 78ch; }
+h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.25; color: var(--hi); }
+p { margin: 0; }
+strong { color: var(--hi); font-weight: 600; }
+code, kbd { font-family: var(--f-mono); font-size: 1em; }
+code { color: var(--hi); }
+kbd { padding: 0 5px; border: 1px solid var(--line); background: var(--surface); color: var(--hi); white-space: nowrap; }
+a { color: var(--hi); }
+
+/* ---------- session header ---------- */
+.prompt { color: var(--muted); display: flex; flex-wrap: wrap; gap: 0 1ch; }
+.prompt .path { color: var(--accent); }
+.prompt .branch { color: var(--muted); }
+.prompt .branch::before { content: "("; } .prompt .branch::after { content: ")"; }
+.prompt .sym { color: var(--hi); }
+.prompt .cmd { color: var(--hi); }
+h1 { font-size: clamp(1.9rem, 6vw, 2.8rem); font-weight: 800; letter-spacing: -0.02em; margin-top: 18px; }
+.cursor { display: inline-block; width: 0.55em; height: 0.9em; margin-left: 0.15em; background: var(--hi); vertical-align: -0.06em; animation: blink 1.1s steps(1) infinite; }
+.lede { color: var(--fg); margin-top: 12px; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 3ch; margin: 18px 0 0; font-variant-numeric: tabular-nums; }
+.facts dt { color: var(--muted); }
+.facts dt::after { content: ":"; }
+.facts dd { margin: 0; color: var(--hi); min-width: 0; }
+.facts dd.warn { color: var(--warn); }
+.facts dd.warn::before { content: "▲ "; }
+
+/* ---------- section rules ---------- */
+section { display: flex; flex-direction: column; gap: 16px; }
+h2 { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 1ch; flex: 1; min-width: 0; text-transform: lowercase; letter-spacing: 0.02em; }
+h2::before { content: "──"; color: var(--line); font-weight: 400; }
+h2::after { content: ""; flex: 1; min-width: 2ch; border-top: 1px solid var(--line); }
+h3 { font-size: 1rem; font-weight: 600; }
+h3::before { content: "### "; color: var(--muted); font-weight: 400; }
+.note { color: var(--muted); max-width: 100ch; }
+.note::before { content: "# "; }
+
+/* view switcher reads like tmux windows */
+.viewbar { display: flex; flex-wrap: wrap; gap: 8px 2ch; align-items: center; }
+.seg { display: inline-flex; gap: 1ch; }
+.seg button { font: 400 1rem/1.4 var(--f-mono); background: transparent; color: var(--muted); border: 0; padding: 0 1ch; cursor: pointer; }
+.seg button::before { content: "["; } .seg button::after { content: "]"; }
+.seg button:hover { color: var(--hi); }
+.seg button[aria-pressed="true"] { background: var(--hi); color: var(--bg); }
+.seg button:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- overlay mockup ---------- */
+.stage { --c1: #c98b4b; --c2: #7a4e2d; --c3: #2f5d62; --c4: #d9c7a3;
+  background: radial-gradient(ellipse at 18% 30%, #2a3a44 0%, transparent 50%), radial-gradient(ellipse at 85% 75%, #3a2e26 0%, transparent 45%), var(--desk); border: 1px solid var(--line); padding: 10px 14px 32px; overflow-x: auto; }
+.bar { display: flex; justify-content: space-between; align-items: center; font: 400 11px/1 var(--f-mono); color: var(--t-soft); padding: 2px 6px 18px; min-width: 760px; }
+.bar span { opacity: .7; }
+.term {
+  min-width: 760px; max-width: 880px; margin: 0 auto;
+  background: var(--t-bg);
+  border: 2px solid var(--t-border);
+  box-shadow: 0 24px 60px rgba(0,0,0,.55);
+  font: 400 12.5px/1.55 var(--f-mono); color: var(--t-fg);
+  padding: 10px 12px 8px;
+}
+@font-face { font-family: "NF Icons"; src: url(data:font/ttf;base64,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ACAAQQB1AHQAaABvAHIAcwAgACgAaAB0AHQAcABzADoALwAvAGcAaQB0AGgAdQBiAC4AYwBvAG0ALwBKAGUAdABCAHIAYQBpAG4AcwAvAEoAZQB0AEIAcgBhAGkAbgBzAE0AbwBuAG8AKQBKAGUAdABCAHIAYQBpAG4AcwBNAG8AbgBvACAATgBGAFIAZQBnAHUAbABhAHIASgBlAHQAQgByAGEAaQBuAHMATQBvAG4AbwAgAE4ARgAgAFIAZQBnAHUAbABhAHIAIAAzAC4ANQAuADEASgBlAHQAQgByAGEAaQBuAHMATQBvAG4AbwAgAE4ARgAgAFIAZQBnAHUAbABhAHIAVgBlAHIAcwBpAG8AbgAgADIALgAzADAANAA7ACAAdAB0AGYAYQB1AHQAbwBoAGkAbgB0ACAAKAB2ADEALgA4AC4ANAAuADcALQA1AGQANQBiACkAOwBOAGUAcgBkACAARgBvAG4AdABzACAAMwAuADUALgAxAEoAZQB0AEIAcgBhAGkAbgBzAE0AbwBuAG8ATgBGAC0AUgBlAGcAdQBsAGEAcgBKAGUAdABCAHIAYQBpAG4AcwAgAE0AbwBuAG8AIABpAHMAIABhACAAdAByAGEAZABlAG0AYQByAGsAIABvAGYAIABKAGUAdABCAHIAYQBpAG4AcwAgAHMALgByAC4AbwAuAEoAZQB0AEIAcgBhAGkAbgBzAFAAaABpAGwAaQBwAHAAIABOAHUAcgB1AGwAbABpAG4ALAAgAEsAbwBuAHMAdABhAG4AdABpAG4AIABCAHUAbABlAG4AawBvAHYAaAB0AHQAcABzADoALwAvAHcAdwB3AC4AagBlAHQAYgByAGEAaQBuAHMALgBjAG8AbQBUAGgAaQBzACAARgBvAG4AdAAgAFMAbwBmAHQAdwBhAHIAZQAgAGkAcwAgAGwAaQBjAGUAbgBzAGUAZAAgAHUAbgBkAGUAcgAgAHQAaABlACAAUwBJAEwAIABPAHAAZQBuACAARgBvAG4AdAAgAEwAaQBjAGUAbgBzAGUALAAgAFYAZQByAHMAaQBvAG4AIAAxAC4AMQAuACAAVABoAGkAcwAgAGwAaQBjAGUAbgBzAGUAIABpAHMAIABhAHYAYQBpAGwAYQBiAGwAZQAgAHcAaQB0AGgAIABhACAARgBBAFEAIABhAHQAOgAgAGgAdAB0AHAAcwA6AC8ALwBzAGMAcgBpAHAAdABzAC4AcwBpAGwALgBvAHIAZwAvAE8ARgBMAGgAdAB0AHAAcwA6AC8ALwBzAGMAcgBpAHAAdABzAC4AcwBpAGwALgBvAHIAZwAvAE8ARgBMAEoAZQB0AEIAcgBhAGkAbgBzAE0AbwBuAG8AIABOAGUAcgBkACAARgBvAG4AdAAAAAMAAAAAAAD/ZQAyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAB//8ADwABAAAADAAAAAAAAAACAAEAAQAWAAEAAAABAAAACgAcAB4AAURGTFQACAAEAAAAAP//AAAAAAAAAAEAAAAKACYAKAACREZMVAAObGF0bgAYAAQAAAAA//8AAAAAAAAAAAAAAAA=) format("truetype"); font-display: block; }
+/* icons: a subset of JetBrainsMono Nerd Font, the font the terminals already use */
+.ic { font-family: "NF Icons", var(--f-mono); font-style: normal; font-weight: 400; }
+/* focus mode: inside vinyl's window, layered back to front: visualizer, cover, record */
+.cells { margin: 0; font: 400 12.5px/1 var(--f-mono); letter-spacing: 0; white-space: pre; color: var(--t-dim); }
+.pbar { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--t-dim); }
+.pbar b { font-weight: 400; color: var(--c4); transition: color .8s; }
+.term.app.is-focus { background: color-mix(in srgb, var(--t-bg) 60%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+.term.app.is-focus .titlebar, .term.app.is-focus .player { background: color-mix(in srgb, var(--t-panel) 55%, transparent); }
+.focus { position: relative; height: 470px; padding-bottom: 100px; overflow: hidden; display: grid; place-items: center; }
+.focus > * { grid-area: 1 / 1; }
+.cells.viz { align-self: end; margin-bottom: 6px; font-size: 26px; opacity: .5; filter: blur(3px); }
+.f-cover {
+  width: 280px; height: 280px;
+  background:
+    radial-gradient(circle at 30% 28%, var(--c4) 0 13%, transparent 14%),
+    linear-gradient(135deg, var(--c1) 0 44%, var(--c2) 44% 68%, var(--c3) 68%);
+  box-shadow: 0 24px 70px rgba(0,0,0,.6);
+  transition: background .8s;
+}
+.cells.disc { font-size: 17px; transform: translateX(20px); opacity: .85; filter: blur(0.6px); text-shadow: 0 0 12px rgba(0,0,0,.6); }
+.f-ctl { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 2ch; padding: 22px 18px 16px; background: linear-gradient(transparent, color-mix(in srgb, var(--t-bg) 72%, transparent)); }
+.f-meta { display: flex; flex-direction: column; min-width: 0; text-shadow: 0 1px 8px rgba(0,0,0,.8); }
+.f-meta b { color: var(--t-hi); font-size: 18px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.f-meta span:last-child { color: var(--t-soft); }
+.f-mid { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.f-ctl .btns { gap: 1.6ch; }
+.f-ctl button { font: inherit; font-size: 15px; line-height: 1; background: transparent; border: 0; color: var(--t-soft); cursor: pointer; width: 2em; height: 2em; display: grid; place-items: center; }
+.f-ctl button:hover { color: var(--t-hi); }
+.f-ctl button[aria-pressed="true"] { color: var(--c4); }
+.f-ctl button.big { width: 2.6em; height: 2.6em; font-size: 16px; background: var(--t-hi); color: var(--t-bg); }
+.f-ctl button:focus-visible { outline: 1px solid var(--t-border); outline-offset: 2px; }
+.f-vol { justify-self: end; }
+.volw { display: inline-flex; align-items: center; gap: 1ch; color: var(--t-soft); }
+.vol-ic { width: 1.2em; }
+.vslider { position: relative; display: inline-block; line-height: 1.4; }
+.vslider .vbar { color: var(--t-dim); white-space: nowrap; }
+.vslider .vbar b { font-weight: 400; color: var(--t-hi); }
+.vslider input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.vslider:focus-within { outline: 1px solid var(--t-border); outline-offset: 2px; }
+.player .btns button { display: grid; place-items: center; width: 2em; height: 1.8em; }
+.player button.big { width: 2.4em; }
+.rt-row { display: inline-flex; align-items: center; gap: 2ch; }
+.f-exit { position: absolute; top: 10px; right: 12px; font: inherit; display: inline-flex; gap: 1ch; align-items: center; background: transparent; color: var(--t-soft); border: 1px solid var(--t-dim); padding: 0 1ch; cursor: pointer; }
+.f-exit:hover { color: var(--t-hi); border-color: var(--t-soft); }
+.f-exit:focus-visible { outline: 1px solid var(--t-border); outline-offset: 1px; }
+.player .rt button { padding: 0; }
+.tabs { display: flex; gap: 16px; margin: 8px 2px; color: var(--t-dim); }
+.tabs .on { color: var(--t-hi); }
+.panes { display: grid; gap: 8px; min-height: 300px; }
+.panes.lib { grid-template-columns: 1fr 1.6fr; }
+.panes.search { grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr 1fr; }
+.panes.queue { grid-template-columns: 1fr; }
+.pane { border: 1px solid var(--t-dim); padding: 4px 0 6px; position: relative; }
+.pane.focus { border-color: var(--t-border); }
+.pane > .h { position: absolute; top: -9px; left: 8px; padding: 0 4px; background: var(--t-bg); color: var(--t-soft); font-size: 11.5px; }
+.pane.focus > .h { color: var(--t-hi); }
+.row { display: grid; grid-template-columns: 1.6fr 1fr 44px; gap: 10px; padding: 0 10px; white-space: nowrap; overflow: hidden; }
+.row > * { overflow: hidden; text-overflow: ellipsis; }
+.row.one { grid-template-columns: 1fr auto; }
+.row.head { color: var(--t-dim); }
+.row.sel { background: var(--t-sel); color: var(--t-hi); }
+.row.play::before { content: "▶ "; }
+.row .r { text-align: right; color: var(--t-soft); }
+.query { grid-column: 1 / -1; border: 1px solid var(--t-border); padding: 4px 10px; color: var(--t-hi); }
+.query::after { content: "▏"; animation: blink 1s steps(1) infinite; color: var(--t-soft); }
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .query::after, .cursor { animation: none; } }
+.keys { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--t-dim); margin-top: 8px; font-size: 11.5px; }
+.keys b { color: var(--t-soft); font-weight: 400; }
+
+/* ---------- vinyl: the terminal app, laid out like a desktop music app ---------- */
+.term.app { padding: 0; border-radius: 8px !important; transition: background .3s; overflow: hidden; }
+.titlebar { display: flex; align-items: center; gap: 2ch; padding: 4px 12px; border-bottom: 1px solid var(--t-dim); background: var(--t-panel); color: var(--t-soft); white-space: nowrap; }
+.tb-app { color: var(--t-hi); font-weight: 600; }
+.tb-nav { color: var(--t-dim); }
+.tb-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tb-search { border: 1px solid var(--t-dim); padding: 0 1ch; color: var(--t-dim); min-width: 32ch; }
+.tb-win { color: var(--t-soft); letter-spacing: 0.6ch; }
+.app .body { display: grid; grid-template-columns: 22ch 1fr; min-height: 330px; }
+.side { display: flex; flex-direction: column; padding: 8px 0; border-right: 1px solid var(--t-dim); background: var(--t-panel); min-width: 0; }
+.nav { display: block; text-align: left; font: inherit; color: var(--t-soft); background: transparent; border: 0; padding: 1px 1.5ch; white-space: nowrap; }
+button.nav { cursor: pointer; }
+button.nav:hover { color: var(--t-hi); }
+.nav i { font-style: normal; display: inline-block; width: 2.5ch; color: var(--t-accent); }
+.nav.on { background: var(--t-sel); color: var(--t-hi); }
+.nav.on i { color: var(--t-hi); }
+.nav:focus-visible, .player button:focus-visible { outline: 1px solid var(--t-border); outline-offset: -1px; }
+.side-h, .kind { color: var(--t-dim); text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.1em; }
+.side-h { margin: 12px 1.5ch 2px; }
+.pl { padding: 0 1.5ch; color: var(--t-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl.f { color: var(--t-accent); }
+.app .main { padding: 12px 14px; min-width: 0; }
+.hero { display: flex; gap: 2ch; align-items: flex-end; margin-bottom: 12px; }
+.cover { display: grid; place-items: center; width: 12ch; height: 6em; flex: none; background: var(--t-sel); color: var(--t-hi); font-size: 1.6em; }
+.cover.sm { width: 7ch; height: 3.4em; font-size: 1.3em; }
+.cover.xs { width: 100%; height: 2.4em; font-size: 1em; color: var(--t-soft); letter-spacing: 0.3ch; }
+.big { color: var(--t-hi); font-size: 22px; font-weight: 800; line-height: 1.25; }
+.big2 { color: var(--t-hi); font-size: 16px; font-weight: 800; }
+.sub { color: var(--t-soft); }
+.acts { display: flex; flex-wrap: wrap; gap: 1ch; margin-top: 8px; }
+.btn { background: var(--t-sel); color: var(--t-hi); padding: 0 1ch; }
+.btn.pri { background: var(--t-hi); color: var(--t-bg); font-weight: 600; }
+.row.trk { grid-template-columns: 3ch 1.5fr 1fr 1fr 5ch; }
+.row.trk .n { color: var(--t-dim); text-align: right; }
+.row.trk.head { border-bottom: 1px solid var(--t-dim); margin-bottom: 2px; }
+.row.now { color: var(--t-hi); font-weight: 600; }
+.row.now .n { color: var(--c1); }
+.sh { color: var(--t-hi); font-weight: 600; margin: 10px 0 4px; }
+.sgrid { display: grid; grid-template-columns: 24ch 1fr; gap: 2ch; margin-top: 4px; }
+.card { display: flex; flex-direction: column; gap: 4px; padding: 8px 1.5ch; border: 1px solid var(--t-dim); background: var(--t-panel); min-width: 0; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5ch; }
+.player { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 2ch; padding: 8px 12px; border-top: 1px solid var(--t-dim); background: var(--t-panel); }
+.np { display: flex; align-items: center; gap: 1.5ch; min-width: 0; }
+.np b { display: block; color: var(--t-hi); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np span { color: var(--t-soft); }
+.mini { white-space: pre; line-height: 1; font-size: 13px; }
+.mini i { font-style: normal; transition: color .8s; }
+.mini .a { color: var(--c1); } .mini .b { color: var(--c2); } .mini .c { color: var(--c3); } .mini .d { color: var(--c4); }
+.ctr { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.btns { display: flex; align-items: center; gap: 2ch; }
+.player button { font: inherit; background: transparent; color: var(--t-soft); border: 0; padding: 0 0.5ch; cursor: pointer; }
+.player button:hover { color: var(--t-hi); }
+.player button.big { background: var(--t-hi); color: var(--t-bg); padding: 0 1.2ch; font-weight: 600; }
+.seek { display: flex; gap: 1ch; color: var(--t-soft); }
+.seek .pbar { flex: none; }
+.rt { display: flex; flex-direction: column; align-items: flex-end; color: var(--t-soft); }
+
+/* ---------- reference blocks ---------- */
+.diagram { background: var(--surface); border: 1px solid var(--line); padding: 16px; overflow-x: auto; }
+.diagram pre.mermaid { margin: 0; background: transparent; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+.cols > * { min-width: 0; }
+.tbl { overflow-x: auto; border: 1px solid var(--line); }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; padding: 7px 12px; vertical-align: top; }
+td { border-top: 1px dashed var(--line); }
+th { font-weight: 600; color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--line); text-transform: lowercase; }
+tbody tr:hover td { background: var(--surface); }
+td code { white-space: nowrap; }
+.tag { color: var(--muted); white-space: nowrap; }
+.tag::before { content: "["; } .tag::after { content: "]"; }
+.tag.new { color: var(--hi); font-weight: 600; }
+ol.steps, ul.risks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; max-width: 82ch; }
+ul.risks li, ol.steps li { position: relative; padding-left: 5ch; }
+ul.risks li::before, ol.steps li::before { position: absolute; left: 0; }
+ul.risks li::before { content: "▲"; color: var(--warn); font-weight: 800; }
+ol.steps { counter-reset: step; }
+ol.steps li { counter-increment: step; }
+ol.steps li::before { content: "[" counter(step) "]"; color: var(--muted); }
+
+/* ---------- status line ---------- */
+.status { display: flex; flex-wrap: wrap; gap: 0; border-top: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 0.86rem; }
+.status > span { padding: 3px 1.5ch; }
+.status .mode { background: var(--hi); color: var(--bg); font-weight: 800; }
+.status .file { color: var(--hi); }
+.status .grow { flex: 1; padding: 0; }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="prompt"><span class="path">~/Projects/spotify-overlay</span><span class="branch">draft</span><span class="sym">»</span><span class="cmd">cat design/spotify-overlay</span></p>
+  <h1>Spotify Overlay<span class="cursor" aria-hidden="true"></span></h1>
+  <p class="lede prose">A drop-down terminal you open with <kbd>Super</kbd> <kbd>Shift</kbd> <kbd>M</kbd> to search songs, open your playlists and control playback. The terminal only controls Spotify. Audio plays through Spotify Soloist, the official background player, so the librespot key block on your account doesn't apply.</p>
+  <dl class="facts">
+    <dt>target</dt><dd>Omarchy 4.5 · Hyprland · Solitude theme</dd>
+    <dt>status</dt><dd>design draft, nothing installed yet</dd>
+    <dt>frontend</dt><dd>vinyl, our own terminal app (Python + Textual, proposed)</dd>
+    <dt>audio</dt><dd>Spotify Soloist (device "Omarchy")</dd>
+    <dt>needs</dt><dd class="warn">Client ID + Soloist API key</dd>
+  </dl>
+</header>
+
+<section>
+  <div class="viewbar">
+    <h2>The overlay</h2>
+    <div class="seg" role="group" aria-label="Overlay view">
+      <button id="v-lib" type="button" aria-pressed="false" data-view="lib">Library</button>
+      <button id="v-search" type="button" aria-pressed="false" data-view="search">Search</button>
+      <button id="v-queue" type="button" aria-pressed="false" data-view="queue">Queue</button>
+      <button id="v-focus" type="button" aria-pressed="true" data-view="focus">Focus</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="bar"><span>1 2 3 ●</span><span>Fri 20 Nov  14:08</span><span id="bar-np">♪ Aruarian Dance · Nujabes</span></div>
+    <div class="term app" id="app" aria-label="Mockup of vinyl, the overlay app: a terminal program laid out like a desktop music app">
+      <div class="titlebar">
+        <span class="tb-app">◉ vinyl</span>
+        <span class="tb-nav ic" aria-hidden="true">&#xf053; &#xf054;</span>
+        <span class="tb-path" id="tb-path">Library / Liked Songs</span>
+        <span class="tb-search"><i class="ic">&#xf002;</i> Search songs, artists, playlists</span>
+        <span class="tb-win ic" aria-hidden="true">&#xf068; &#xf096; &#xf00d;</span>
+      </div>
+      <div class="body">
+        <nav class="side" aria-label="Sidebar">
+          <button type="button" class="nav" data-view="search" data-t="search"><i class="ic">&#xf002;</i>Search</button>
+          <button type="button" class="nav" data-view="lib" data-t="lib"><i class="ic">&#xf004;</i>Liked Songs</button>
+          <button type="button" class="nav" data-view="queue" data-t="queue"><i class="ic">&#xf0ca;</i>Queue</button>
+          <button type="button" class="nav" data-view="focus" data-t="focus"><i class="ic">&#xf065;</i>Focus</button>
+          <span class="nav"><i class="ic">&#xf108;</i>Devices</span>
+          <div class="side-h">Playlists</div>
+          <span class="pl"><i class="ic">&#xf001;</i> Late-night coding</span>
+          <span class="pl"><i class="ic">&#xf001;</i> Lo-fi focus</span>
+          <span class="pl"><i class="ic">&#xf001;</i> Gym rotation</span>
+          <span class="pl"><i class="ic">&#xf001;</i> Road trip 2026</span>
+          <span class="pl"><i class="ic">&#xf001;</i> Old Bollywood</span>
+          <span class="pl f"><i class="ic">&#xf001;</i> Jazz Vibes</span>
+        </nav>
+        <div class="main">
+
+          <div id="view-lib">
+            <div class="hero">
+              <span class="cover ic" aria-hidden="true">&#xf004;</span>
+              <div>
+                <div class="kind">playlist</div>
+                <div class="big">Liked Songs</div>
+                <div class="sub">1,204 songs · 71 hr 12 min</div>
+                <div class="acts"><span class="btn pri"><i class="ic">&#xf04b;</i> Play</span><span class="btn"><i class="ic">&#xf074;</i> Shuffle</span><span class="btn"><i class="ic">&#xf0dc;</i> Recently added</span></div>
+              </div>
+            </div>
+            <div class="row trk head"><span class="n">#</span><span>Title</span><span>Artist</span><span>Album</span><span class="r">Len</span></div>
+            <div class="row trk now"><span class="n">▶</span><span>Aruarian Dance</span><span>Nujabes</span><span>Modal Soul</span><span class="r">4:28</span></div>
+            <div class="row trk sel"><span class="n">2</span><span>Maria También</span><span>Khruangbin</span><span>Con Todo El Mundo</span><span class="r">3:27</span></div>
+            <div class="row trk"><span class="n">3</span><span>Redbone</span><span>Childish Gambino</span><span>Awaken, My Love!</span><span class="r">5:26</span></div>
+            <div class="row trk"><span class="n">4</span><span>Tadow</span><span>Masego, FKJ</span><span>Tadow</span><span class="r">5:01</span></div>
+            <div class="row trk"><span class="n">5</span><span>Kun Faya Kun</span><span>A.R. Rahman</span><span>Rockstar</span><span class="r">7:53</span></div>
+            <div class="row trk"><span class="n">6</span><span>Nights</span><span>Frank Ocean</span><span>Blonde</span><span class="r">5:07</span></div>
+          </div>
+
+          <div id="view-search" hidden>
+            <div class="query">/ nujabes</div>
+            <div class="sgrid">
+              <div>
+                <div class="sh">Top result</div>
+                <div class="card"><span class="cover sm" aria-hidden="true">●</span><span class="big2">Nujabes</span><span class="kind">artist</span></div>
+              </div>
+              <div style="min-width:0">
+                <div class="sh">Songs</div>
+                <div class="row sel"><span>Feather</span><span>Nujabes</span><span class="r">2:55</span></div>
+                <div class="row"><span>Luv(sic.) pt3</span><span>Nujabes</span><span class="r">5:47</span></div>
+                <div class="row"><span>Aruarian Dance</span><span>Nujabes</span><span class="r">4:28</span></div>
+                <div class="row"><span>Reflection Eternal</span><span>Nujabes</span><span class="r">4:21</span></div>
+              </div>
+            </div>
+            <div class="sh">Albums</div>
+            <div class="cards">
+              <div class="card"><span class="cover xs" aria-hidden="true">▓▒░</span><span>Modal Soul</span><span class="kind">2005</span></div>
+              <div class="card"><span class="cover xs" aria-hidden="true">▒░▒</span><span>Metaphorical Music</span><span class="kind">2003</span></div>
+              <div class="card"><span class="cover xs" aria-hidden="true">░▒▓</span><span>Spiritual State</span><span class="kind">2011</span></div>
+            </div>
+          </div>
+
+          <div id="view-queue" hidden>
+            <div class="sh">Now playing</div>
+            <div class="row trk now"><span class="n">▶</span><span>Aruarian Dance</span><span>Nujabes</span><span>Modal Soul</span><span class="r">4:28</span></div>
+            <div class="sh">Next up</div>
+            <div class="row trk sel"><span class="n">1</span><span>Feather</span><span>Nujabes</span><span>added from search</span><span class="r">2:55</span></div>
+            <div class="row trk"><span class="n">2</span><span>Maria También</span><span>Khruangbin</span><span>Liked Songs</span><span class="r">3:27</span></div>
+            <div class="row trk"><span class="n">3</span><span>Redbone</span><span>Childish Gambino</span><span>Liked Songs</span><span class="r">5:26</span></div>
+            <div class="row trk"><span class="n">4</span><span>Tadow</span><span>Masego, FKJ</span><span>Liked Songs</span><span class="r">5:01</span></div>
+          </div>
+
+        </div>
+      </div>
+      <div class="focus" id="view-focus" hidden>
+        <pre id="bars" class="cells viz" aria-hidden="true"></pre>
+        <div class="f-cover" aria-hidden="true"></div>
+        <pre id="tt" class="cells disc" aria-hidden="true"></pre>
+        <div class="f-ctl">
+          <div class="f-meta"><span class="kind">now playing</span><b id="f-title">Aruarian Dance</b><span id="f-meta">Nujabes · Modal Soul</span></div>
+          <div class="f-mid">
+            <div class="btns">
+              <button type="button" id="f-shuf" aria-label="Shuffle" aria-pressed="false"><i class="ic">&#xf074;</i></button>
+              <button type="button" id="f-prev" aria-label="Previous"><i class="ic">&#xf048;</i></button>
+              <button type="button" id="f-play" class="big" aria-label="Pause"><i class="ic">&#xf04c;</i></button>
+              <button type="button" id="f-next" aria-label="Next"><i class="ic">&#xf051;</i></button>
+              <button type="button" id="f-rep" aria-label="Repeat" aria-pressed="false"><i class="ic">&#xf01e;</i></button>
+            </div>
+            <div class="seek"><span>1:42</span><span class="pbar" aria-hidden="true"><b>▰▰▰▰▰▰▰▰▰▰▰</b>▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱</span><span id="f-len">4:28</span></div>
+          </div>
+          <div class="f-vol"><span class="volw"><i class="ic vol-ic" aria-hidden="true">&#xf028;</i><span class="vslider"><span class="vbar" aria-hidden="true"><b>▰▰▰▰▰▰</b>▱▱▱▱</span><input type="range" id="f-vol" min="0" max="10" value="6" aria-label="Volume"></span></span></div>
+        </div>
+        <button type="button" class="f-exit" data-view="lib"><i class="ic">&#xf066;</i> exit focus</button>
+      </div>
+      <div class="player">
+        <div class="np">
+          <span class="mini" aria-hidden="true"><i class="a">██</i><i class="b">██</i>
+<i class="c">██</i><i class="d">██</i></span>
+          <div style="min-width:0"><b id="pb-title">Aruarian Dance</b><span id="pb-artist">Nujabes</span></div>
+        </div>
+        <div class="ctr">
+          <div class="btns">
+            <button id="pb-prev" type="button" aria-label="Previous"><i class="ic">&#xf048;</i></button>
+            <button id="pb-play" type="button" class="big" aria-label="Pause"><i class="ic">&#xf04c;</i></button>
+            <button id="pb-next" type="button" aria-label="Next"><i class="ic">&#xf051;</i></button>
+          </div>
+          <div class="seek"><span>1:42</span><span class="pbar" aria-hidden="true"><b>▰▰▰▰▰▰▰▰▰</b>▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱</span><span id="pb-len">4:28</span></div>
+        </div>
+        <div class="rt"><span class="rt-row"><button type="button" data-view="focus" aria-label="Focus mode" title="Focus mode"><i class="ic">&#xf065;</i></button><span><i class="ic">&#xf108;</i> Omarchy</span></span><span class="volw"><i class="ic vol-ic" aria-hidden="true">&#xf028;</i><span class="vslider"><span class="vbar" aria-hidden="true"><b>▰▰▰▰▰▰</b>▱▱▱▱</span><input type="range" id="pb-vol" min="0" max="10" value="6" aria-label="Volume"></span></span></div>
+      </div>
+    </div>
+  </div>
+  <p class="note">The mockup opens in focus mode. Its controls sit over the art: shuffle, previous, play/pause, next, repeat, the seek bar and a volume slider you can drag. <strong>exit focus</strong> (or <kbd>esc</kbd>) goes back to the normal layout with its player bar. Buttons use Nerd Font icons from JetBrainsMono Nerd Font, which your terminals already use. Example songs and playlists, not your library; the cover and album colours are illustrative. vinyl is a terminal program laid out like a desktop music app: a title bar, a sidebar, the main pane and a player bar along the bottom. It works with the mouse and with keys (<kbd>/</kbd> search, <kbd>enter</kbd> play, <kbd>space</kbd> play/pause, <kbd>«</kbd> <kbd>»</kbd> previous/next, <kbd>f</kbd> focus, <kbd>esc</kbd> leave focus or hide).</p>
+  <div class="prose" style="display:flex;flex-direction:column;gap:10px">
+    <h3>Focus mode</h3>
+    <p>Focus mode fills vinyl's window with the song playing. At the back, the audio visualizer (24 columns of <code>▁▂▃▄▅▆▇█</code> from <code>cava</code>) is translucent and blurred. In front of it sits the song cover, and in the centre the record spins at 33⅓ rpm, translucent and slightly blurred, drawn in text symbols: <code>░ ▒ ▓ █</code> for the record and its label, <code>◉ │ ╯ ╭ ■</code> for the tonearm, which lifts when you pause. The window itself turns see-through, so your wallpaper shows faintly behind it. The bottom player bar hides and its controls move into the view: title and artist on the left, shuffle, previous, play/pause, next and repeat with the seek bar in the middle, and the volume slider on the right.</p>
+  </div>
+</section>
+
+<section>
+  <h2>How the pieces connect</h2>
+  <p class="prose">Three parts, each doing one job. The overlay is just a terminal window Hyprland shows and hides. Our terminal app, vinyl, talks to Spotify's official Web API for playlists, search and remote control. Soloist sits in the background as a Spotify Connect speaker named "Omarchy" and plays the audio.</p>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph PC["Your computer"]
+    K["Super+Shift+M<br/>Hyprland bind"] --> T["spotify-overlay<br/>toggle script"]
+    T --> W["Floating terminal<br/>class: spotify-overlay"]
+    W --> SP["vinyl TUI<br/>desktop layout, controls only"]
+    H["theme-set hook"] --> TH["vinyl theme<br/>from colors.toml"]
+    TH -.-> SP
+    SP --> DK["Focus mode<br/>record, cover, visualizer"]
+    S["Spotify Soloist<br/>user service, device 'Omarchy'"] --> PW["PipeWire<br/>speakers"]
+    PW -->|"audio levels"| CV["cava<br/>raw bar output"]
+    CV --> DK
+    SP -->|"now playing + cover URL"| PE["palette extractor<br/>4 colours from cover"]
+    PE --> DK
+    D["soloistd<br/>auto-update"] -.-> S
+    BB["Bar B music widget"] -.->|"MPRIS? to verify"| S
+  end
+  subgraph Cloud["Spotify"]
+    API["Web API<br/>playlists, search, player"]
+    CON["Connect"]
+  end
+  SP -->|"HTTPS + your Client ID"| API
+  API --> CON
+  CON -->|"play, pause, queue"| S
+  </pre></div>
+</section>
+
+<section>
+  <h2>Functions</h2>
+  <p class="prose">Parts marked <span class="tag new">ours</span> are the small scripts and config we'd write. The rest already exists and only gets configured.</p>
+  <div class="diagram"><pre class="mermaid">
+classDiagram
+  direction LR
+  class SpotifyOverlay {
+    <<ours: ~/.local/bin/spotify-overlay>>
+    +toggle()
+    +ensureRunning()
+    +show()
+    +hide()
+    +isOpen() bool
+  }
+  class OverlayRules {
+    <<ours: hyprland.lua>>
+    +float(class=spotify-overlay)
+    +size(1100x680)
+    +center()
+    +bind(SUPER+SHIFT+M, toggle)
+  }
+  class ThemeSync {
+    <<ours: theme-set.d hook>>
+    +readColors(colors.toml)
+    +writeTheme(theme.toml)
+    +reloadPlayer()
+  }
+  class VinylApp {
+    <<ours: ~/.local/bin/vinyl>>
+    client_id
+    token = PKCE, cached
+    default_device = Omarchy
+    +listPlaylists()
+    +openPlaylist(id)
+    +search(query)
+    +play(uri)
+    +addToQueue(uri)
+    +switchDevice(id)
+  }
+  class WebAPI {
+    <<Spotify>>
+    GET /me/playlists
+    GET /playlists/id/items
+    GET /search
+    PUT /me/player/play
+    POST /me/player/queue
+    PUT /me/player
+  }
+  class Soloist {
+    <<configured: soloistd>>
+    device_name = Omarchy
+    +start()
+    +status()
+    +update()
+  }
+  class FocusMode {
+    <<ours: vinyl focus view>>
+    playing bool
+    cover url
+    palette color[4]
+    +enter() / exit()
+    +layers(visualizer, cover, record)
+    +spin(playing)
+    +setTrack(title, artist, cover)
+    +drawBars(levels[24])
+    +drawCells(grid 26x13)
+  }
+  class Palette {
+    <<ours: script>>
+    +extract(coverUrl) color[4]
+    +cache(albumId)
+  }
+  class Visualizer {
+    <<configured: cava>>
+    bars = 24
+    output = raw fifo
+    +levels() int[24]
+  }
+  class NowPlaying {
+    <<ours: watcher>>
+    +poll() track
+    +onTrackChange(track)
+  }
+  OverlayRules --> SpotifyOverlay : key press
+  VinylApp --> FocusMode : focus mode (f)
+  NowPlaying --> VinylApp : reads playback
+  NowPlaying --> Palette : new cover
+  Palette --> FocusMode : colours
+  NowPlaying --> FocusMode : title, cover, playing
+  Visualizer --> FocusMode : bar levels
+  SpotifyOverlay --> VinylApp : launches in terminal
+  ThemeSync --> VinylApp : colours
+  VinylApp --> WebAPI : requests
+  WebAPI --> Soloist : Connect commands
+  </pre></div>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Function</th><th>Part</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>spotify-overlay toggle</code></td><td><span class="tag new">ours</span></td><td>Shows the overlay if hidden, hides it if visible. Starts it first if it isn't running.</td></tr>
+      <tr><td><code>spotify-overlay ensureRunning</code></td><td><span class="tag new">ours</span></td><td>Opens a terminal with class <code>spotify-overlay</code> running vinyl, and checks Soloist is up.</td></tr>
+      <tr><td><code>hide</code> on <kbd>Esc</kbd> or focus loss</td><td><span class="tag new">ours</span></td><td>Moves the window to a hidden special workspace instead of closing it, so it reopens instantly with your place kept.</td></tr>
+      <tr><td><code>FocusMode.enter()</code></td><td><span class="tag new">ours</span></td><td>Fills the window with the song, in three layers: the cava visualizer translucent and blurred at the back, the song cover in the middle, and the spinning record in the centre, translucent and slightly blurred. <kbd>f</kbd>, the sidebar or the focus icon in the player bar opens it; <kbd>esc</kbd> leaves it.</td></tr>
+      <tr><td><code>FocusMode.spin(playing)</code></td><td><span class="tag new">ours</span></td><td>Redraws the record at 33⅓ rpm as 26×13 text symbols in the terminal font: <code>░ ▒</code> for the grooves, <code>▓</code> for the turning highlight, <code>█</code> in the album colours for the label, <code>◉ │ ╯ ╭ ■</code> for the tonearm. On pause it slows to a stop and lifts the tonearm.</td></tr>
+      <tr><td><code>FocusMode.drawBars(levels)</code></td><td><span class="tag new">ours</span></td><td>Draws 24 columns of <code>▁▂▃▄▅▆▇█</code> blocks, five rows high, from cava's audio levels, in hard steps of the album's four colours, with peak caps that drop slowly. Bars sink to zero when nothing plays.</td></tr>
+      <tr><td><code>Palette.extract(cover)</code></td><td><span class="tag new">ours</span></td><td>Downloads the cover once, picks its four main colours, and caches them per album. The cover itself becomes the record's label.</td></tr>
+      <tr><td><code>NowPlaying.onTrackChange</code></td><td><span class="tag new">ours</span></td><td>Notices a new song and sends its title, cover and colours to focus mode and the player bar, which fade to the new colours.</td></tr>
+      <tr><td><code>ThemeSync</code></td><td><span class="tag new">ours</span></td><td>Runs on <code>omarchy theme set</code> and rewrites vinyl's colours from the new theme.</td></tr>
+      <tr><td><code>listPlaylists / openPlaylist</code></td><td><span class="tag new">ours</span></td><td>Your own and followed playlists, Liked Songs, saved albums and followed artists.</td></tr>
+      <tr><td><code>search</code></td><td><span class="tag new">ours</span></td><td>A top result, then songs, albums and playlists, like a desktop app's search page.</td></tr>
+      <tr><td><code>play / addToQueue</code></td><td><span class="tag new">ours</span></td><td>Tells Spotify to play or queue on the "Omarchy" device.</td></tr>
+      <tr><td><code>start / update</code></td><td><span class="tag">soloistd</span></td><td>Keeps Soloist running as a user service and fetches a new build when the old one expires.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>What happens when you use it</h2>
+  <div class="cols">
+    <div>
+      <h3>Play a playlist</h3>
+      <div class="diagram" style="margin-top:10px"><pre class="mermaid">
+sequenceDiagram
+  actor You
+  participant H as Hyprland
+  participant O as spotify-overlay
+  participant P as vinyl
+  participant A as Web API
+  participant S as Soloist
+  You->>H: Super+Shift+M
+  H->>O: toggle()
+  O->>O: isOpen()? no
+  O->>H: show window
+  P->>A: GET /me/playlists
+  A-->>P: your playlists
+  You->>P: Enter on "Lo-fi focus"
+  P->>A: PUT /me/player/play (device Omarchy)
+  A->>S: play context
+  S-->>You: audio
+  You->>P: Esc
+  P->>O: hide()
+      </pre></div>
+    </div>
+    <div>
+      <h3>Search and queue a song</h3>
+      <div class="diagram" style="margin-top:10px"><pre class="mermaid">
+sequenceDiagram
+  actor You
+  participant P as vinyl
+  participant A as Web API
+  participant S as Soloist
+  You->>P: / then "nujabes"
+  P->>A: GET /search?q=nujabes
+  A-->>P: tracks, albums, artists, playlists
+  You->>P: z on "Feather"
+  P->>A: POST /me/player/queue
+  A->>S: add to queue
+  S-->>You: plays after current song
+      </pre></div>
+    </div>
+  </div>
+  <div>
+    <h3>First launch</h3>
+    <div class="diagram" style="margin-top:10px"><pre class="mermaid">
+sequenceDiagram
+  actor You
+  participant O as spotify-overlay
+  participant S as soloistd
+  participant P as vinyl
+  participant B as Browser
+  O->>S: status()
+  alt Soloist not set up
+    S->>You: ask for Soloist API key (once)
+    S->>S: download build, start service
+  end
+  O->>P: start with your Client ID
+  P->>B: open Spotify sign-in
+  You->>B: Agree
+  B-->>P: token saved locally
+  P->>P: set "Omarchy" as default device
+    </pre></div>
+  </div>
+</section>
+
+<section>
+  <h2>Overlay states</h2>
+  <div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> NotRunning
+  NotRunning --> Visible: Super+Shift+M (starts terminal)
+  Visible --> Hidden: Esc / Super+Shift+M / focus lost
+  Hidden --> Visible: Super+Shift+M
+  Visible --> NotRunning: q (quit player)
+  Hidden --> NotRunning: logout
+  note right of Hidden
+    Music keeps playing.
+    Soloist runs on its own.
+  end note
+  </pre></div>
+</section>
+
+<section>
+  <h2>Open questions</h2>
+  <ul class="risks">
+    <li><strong>Client ID.</strong> vinyl needs a Spotify Developer app's Client ID. Yours was removed with the old plugin, so either paste it again or create a new app.</li>
+    <li><strong>Soloist API key.</strong> soloistd asks for one. Spotify's announcement doesn't say how to get it. I'll read their getting-started guide before installing anything.</li>
+    <li><strong>Spotify-made playlists.</strong> Newer developer apps can't read Spotify's own playlists, such as Discover Weekly and Daily Mix. Your playlists, ones you follow from other people, Liked Songs and search all work.</li>
+    <li><strong>Bar B widget.</strong> It's not yet known whether Soloist reports what's playing to the desktop (MPRIS). If it doesn't, the bar won't show the song, but the overlay still does.</li>
+    <li><strong>Now-playing source for focus mode.</strong> Focus mode needs the current song and cover. Plan A has vinyl share the current song with the deck. Plan B uses Soloist's own local events, if they include the cover. Both get checked at build time.</li>
+    <li><strong>Blur in a terminal.</strong> A terminal can't blur its own text. The cover can be shown as a real image with the kitty graphics protocol (Ghostty and kitty support it, Alacritty doesn't), blurred beforehand with ImageMagick. The window's see-through background comes from the terminal's opacity plus Hyprland's blur. The blur on the visualizer and record would be faked with dim colours and soft <code>░▒</code> edges, unless we draw the whole focus view as an image each frame, which costs more CPU.</li>
+    <li><strong>Bars need audio on this PC.</strong> cava listens to your speakers' output, so the bars move only when Soloist plays here. If you play on your phone instead, the record still spins but the bars stay flat.</li>
+    <li><strong>Key change.</strong> <kbd>Super</kbd> <kbd>Shift</kbd> <kbd>M</kbd> currently opens the Spotify desktop app. The overlay would take it over. The desktop app stays installed as a fallback.</li>
+    <li><strong>New packages.</strong> <code>spotify-soloist-bin</code> appeared on the AUR 16 hours ago and <code>soloistd</code> has 5 GitHub stars. I'd review both before installing.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Build order</h2>
+  <ol class="steps">
+    <li>Get Soloist playing a song on this computer, controlled from your phone. If this fails, the plan falls back to the official desktop app running hidden.</li>
+    <li>Write vinyl, the terminal app: sign-in with your Client ID, then the sidebar, library, search, queue and player bar, all playing on "Omarchy".</li>
+    <li>Write <code>spotify-overlay</code>, the window rules and the keybind.</li>
+    <li>Build focus mode: the spinning record in the centre, the song cover behind it, and the cava visualizer translucent and blurred at the back.</li>
+    <li>Add the theme hook so the overlay recolours with <code>omarchy theme set</code>.</li>
+    <li>Check whether Bar B shows Soloist's song, and wire it up if it can.</li>
+  </ol>
+</section>
+
+<footer class="status" aria-label="Page status">
+  <span class="mode">DRAFT</span><span class="file">design/spotify-overlay.html</span><span class="grow"></span><span>solitude</span><span>2026-11-20</span><span>step 0/6</span>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var views = ["lib", "search", "queue", "focus"];
+  var paths = { lib: "Library / Liked Songs", search: "Search / nujabes", queue: "Queue", focus: "Focus" };
+  function show(v) {
+    views.forEach(function (n) {
+      document.getElementById("view-" + n).hidden = n !== v;
+      document.getElementById("v-" + n).setAttribute("aria-pressed", String(n === v));
+    });
+    document.querySelectorAll(".side [data-t]").forEach(function (t) {
+      t.classList.toggle("on", t.getAttribute("data-t") === v);
+    });
+    document.getElementById("tb-path").textContent = paths[v];
+    document.querySelector(".app .body").hidden = v === "focus";
+    document.querySelector(".app .player").hidden = v === "focus";
+    document.getElementById("app").classList.toggle("is-focus", v === "focus");
+  }
+  document.querySelectorAll("[data-view]").forEach(function (b) {
+    b.addEventListener("click", function () { show(b.getAttribute("data-view")); });
+  });
+  show("focus");
+
+  // ---- focus mode mockup: album palettes, spin, bars ----
+  var tracks = [
+    { t: "Aruarian Dance", m: "Nujabes · Modal Soul", len: "4:28", p: ["#c98b4b", "#7a4e2d", "#2f5d62", "#d9c7a3"] },
+    { t: "Maria También", m: "Khruangbin · Con Todo El Mundo", len: "3:27", p: ["#d2483a", "#f0b44c", "#3b6e8f", "#efe3c8"] },
+    { t: "Redbone", m: "Childish Gambino · Awaken, My Love!", len: "5:26", p: ["#b8323a", "#5b1a2a", "#e8a24a", "#f2d6b3"] },
+    { t: "Nights", m: "Frank Ocean · Blonde", len: "5:07", p: ["#7fa7c9", "#e9e4dc", "#3f5f7a", "#c7b8a6"] }
+  ];
+  var stage = document.querySelector(".stage"), cur = 0, playing = true;
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function setTrack(i) {
+    var tr = tracks[i];
+    tr.p.forEach(function (c, k) { stage.style.setProperty("--c" + (k + 1), c); });
+    document.getElementById("f-title").textContent = tr.t;
+    document.getElementById("f-meta").textContent = tr.m;
+    document.getElementById("bar-np").textContent = "♪ " + tr.t + " · " + tr.m.split(" · ")[0];
+    document.getElementById("pb-title").textContent = tr.t;
+    document.getElementById("pb-artist").textContent = tr.m.split(" · ")[0];
+    document.getElementById("pb-len").textContent = tr.len;
+    document.getElementById("f-len").textContent = tr.len;
+  }
+  function step(d) { cur = (cur + d + tracks.length) % tracks.length; setTrack(cur); }
+  function togglePlay() {
+    playing = !playing;
+    ["pb-play", "f-play"].forEach(function (id) {
+      var b = document.getElementById(id);
+      b.firstChild.textContent = playing ? "\uf04c" : "\uf04b";
+      b.setAttribute("aria-label", playing ? "Pause" : "Play");
+    });
+  }
+  document.getElementById("pb-next").addEventListener("click", function () { step(1); });
+  document.getElementById("pb-prev").addEventListener("click", function () { step(-1); });
+  document.getElementById("pb-play").addEventListener("click", togglePlay);
+  document.getElementById("f-play").addEventListener("click", togglePlay);
+  document.getElementById("f-next").addEventListener("click", function () { step(1); });
+  document.getElementById("f-prev").addEventListener("click", function () { step(-1); });
+  ["f-shuf", "f-rep"].forEach(function (id) {
+    var b = document.getElementById(id);
+    b.addEventListener("click", function () { b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true")); });
+  });
+  var vol = 6;
+  function renderVol() {
+    var icon = vol === 0 ? "\uf026" : vol < 5 ? "\uf027" : "\uf028";
+    document.querySelectorAll(".volw").forEach(function (w) {
+      w.querySelector(".vbar").innerHTML = "<b>" + "▰".repeat(vol) + "</b>" + "▱".repeat(10 - vol);
+      w.querySelector(".vol-ic").textContent = icon;
+      w.querySelector("input").value = vol;
+    });
+  }
+  document.querySelectorAll(".volw input").forEach(function (inp) {
+    inp.addEventListener("input", function () { vol = +inp.value; renderVol(); });
+  });
+  renderVol();
+  setTrack(0);
+
+  function pal() {
+    var cs = getComputedStyle(stage);
+    return [1, 2, 3, 4].map(function (k) { return cs.getPropertyValue("--c" + k).trim() || "#888"; });
+  }
+
+  // text-symbol turntable: 26x13 cells in the terminal font, redrawn each frame
+  var tt = document.getElementById("tt");
+  var COLS = 26, TROWS = 13, CW = 0.6;          // a mono cell is 0.6 wide for 1 tall
+  var rot = 0, speed = 0, armA = 0.42;
+  var OMEGA = 2 * Math.PI / 1.8; // 33 1/3 rpm
+  function esc(ch) { return ch === "<" ? "&lt;" : ch === "&" ? "&amp;" : ch; }
+  function cellsToHTML(rows) {
+    var out = [];
+    rows.forEach(function (row) {
+      var line = "", run = "", col = null;
+      row.forEach(function (c) {
+        var k = c ? c[1] : null;
+        if (k !== col) {
+          if (run) line += col ? '<span style="color:' + col + '">' + run + "</span>" : run;
+          run = ""; col = k;
+        }
+        run += c ? esc(c[0]) : " ";
+      });
+      if (run) line += col ? '<span style="color:' + col + '">' + run + "</span>" : run;
+      out.push(line);
+    });
+    return out.join("\n");
+  }
+  function drawTT(p) {
+    var cx = 11, cy = 6.5, R = 6.4, rows = [];
+    for (var y = 0; y < TROWS; y++) {
+      var row = [];
+      for (var x = 0; x < COLS; x++) {
+        var dx = (x + 0.5 - cx) * CW, dy = y + 0.5 - cy, r = Math.sqrt(dx * dx + dy * dy), c = null;
+        if (r <= R) {
+          var t = (((Math.atan2(dy, dx) - rot) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+          if (r < 0.55) c = ["◎", "#cfd3d5"];
+          else if (r < 2.3) c = [r > 1.9 ? "▓" : "█", p[Math.floor(t / (Math.PI / 2)) % 4]];
+          else if (r > R - 0.6) c = ["░", "#3a4044"];
+          else {
+            var sheen = Math.cos(2 * t);        // two highlight bands, like light on a real record
+            if (sheen > 0.88) c = ["▓", "#8a9094"];
+            else if (sheen > 0.65) c = ["▒", "#5a6166"];
+            else c = (Math.floor(r * 2) % 2) ? ["░", "#30373b"] : ["▒", "#22282b"];
+          }
+        }
+        row.push(c);
+      }
+      rows.push(row);
+    }
+    // tonearm: pivot top-right, swings onto the record while playing, lifts off when paused
+    armA += ((playing ? 0.42 : 0.1) - armA) * 0.08;
+    var px = 24, py = 0, len = 8, lastX = px;
+    var A = "#c3c7c9";
+    rows[py][px] = ["◉", "#9da2a5"];
+    // one cell per row; where the arm steps left it turns a corner: ╯──╭ then │ below
+    for (var ay = 1; ay <= len && ay < TROWS; ay++) {
+      var ax = Math.max(0, Math.round(px - Math.tan(armA) * ay / CW));
+      if (ax < lastX) {
+        if (!(ay - 1 === py && lastX === px)) rows[ay - 1][lastX] = ["╯", A];
+        for (var k = ax + 1; k < lastX; k++) rows[ay - 1][k] = ["─", A];
+        rows[ay - 1][ax] = ["╭", A];
+      }
+      rows[ay][ax] = ay === len ? ["■", "#9da2a5"] : ["│", A];
+      lastX = ax;
+    }
+    tt.innerHTML = cellsToHTML(rows);
+  }
+
+  // text-symbol bars: 24 columns of ▁▂▃▄▅▆▇█, hard colour steps, ━ peak caps that fall slowly
+  var bars = document.getElementById("bars");
+  var N = 24, ROWS = 8, STEPS = 8, LEVEL = " ▁▂▃▄▅▆▇█";
+  var lv = new Array(N).fill(0), peak = new Array(N).fill(0), phase = 0;
+  function drawBars(p) {
+    phase += 0.06;
+    var h = [];
+    for (var i = 0; i < N; i++) {
+      var target = 0;
+      if (playing) {
+        var bass = Math.exp(-i / 7);
+        target = 0.2 + 0.6 * bass * (0.6 + 0.4 * Math.sin(phase * 2.2 + i * 0.2))
+               + 0.3 * Math.abs(Math.sin(phase * 1.3 + i * 0.7)) * Math.random();
+      }
+      lv[i] += (Math.min(1, target) - lv[i]) * (playing ? 0.35 : 0.12);
+      h[i] = Math.round(lv[i] * ROWS * STEPS);
+      peak[i] = Math.max(h[i], peak[i] - 0.3);
+    }
+    var rows = [];
+    for (var r = 0; r < ROWS; r++) {
+      var base = (ROWS - 1 - r) * STEPS, row = [];
+      for (var j = 0; j < N; j++) {
+        var fill = Math.max(0, Math.min(STEPS, h[j] - base)), pk = Math.ceil(peak[j]);
+        var col = p[Math.min(3, Math.floor(j / N * 4))];
+        if (fill > 0) row.push([LEVEL[fill], col]);
+        else if (pk > h[j] && pk > base && pk <= base + STEPS) row.push(["━", p[3]]);
+        else row.push(null);
+        if (j < N - 1) row.push(null);
+      }
+      rows.push(row);
+    }
+    bars.innerHTML = cellsToHTML(rows);
+  }
+
+  var last = 0;
+  function frame(ts) {
+    var dt = last ? Math.min(0.05, (ts - last) / 1000) : 0; last = ts;
+    speed += ((playing ? OMEGA : 0) - speed) * (playing ? 0.04 : 0.025);
+    rot += speed * dt;
+    var p = pal();
+    drawTT(p); drawBars(p);
+    if (!reduce) requestAnimationFrame(frame);
+  }
+  if (reduce) {
+    for (var i = 0; i < N; i++) { lv[i] = 0.3 + 0.5 * Math.exp(-i / 7); peak[i] = Math.round(lv[i] * ROWS * STEPS) + 5; }
+    var still = function () { var p = pal(); drawTT(p); drawBars(p); };
+    playing = true; armA = 0.42; still();
+    ["pb-next", "pb-prev", "f-next", "f-prev"].forEach(function (id) { document.getElementById(id).addEventListener("click", function () { setTimeout(still, 0); }); });
+  } else requestAnimationFrame(frame);
+})();
+</script>

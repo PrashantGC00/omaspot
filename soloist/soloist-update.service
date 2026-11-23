@@ -1,0 +1,7 @@
+[Unit]
+Description=Update Spotify Soloist (builds expire after 90 days)
+# also started by soloist.service when it exits with code 10 (build expired)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/soloist-update

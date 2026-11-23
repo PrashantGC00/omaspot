@@ -1,0 +1,15 @@
+[Unit]
+Description=MPRIS bridge for Soloist (laptop media keys, Omarchy media OSD and bar widgets)
+After=soloist.service
+Wants=soloist.service
+
+[Service]
+# reconnects to Soloist's WebSocket by itself when Soloist restarts or updates
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=%h/Projects/spotify-overlay/omaspot
+ExecStart=/usr/bin/python3 -m omaspot.mpris
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

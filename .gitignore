@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+# never commit credentials: they live in ~/.config/soloist/.env and ~/.cache/omaspot/token.json, outside the repo
+.env
+*.env
+token.json
+
+# personal working notes (kept locally, not published)
+CLAUDE.md

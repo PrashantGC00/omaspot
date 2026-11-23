@@ -1,0 +1,42 @@
+#!/bin/sh
+# omaspot launcher.
+#
+# `omaspot` shows the Super+M overlay when it is installed; otherwise it opens omaspot in its own kitty window with overlay/kitty-overlay.conf (bigger font, matching
+# background) and window class omaspot. If that window already exists, it's focused instead.
+# Inside that window (OMASPOT_WINDOW=1), with --here, or for --login/--check, it runs in the current terminal.
+#
+# Uses /usr/bin/python3 on purpose: textual/httpx are Arch packages, and mise puts its own python3 first in PATH.
+here="$(dirname "$(readlink -f "$0")")"
+conf="${OMASPOT_KITTY_CONF:-$here/../../overlay/kitty-overlay.conf}"
+[ -f "$HOME/.config/omaspot/kitty-overlay.conf" ] && [ -z "$OMASPOT_KITTY_CONF" ] && conf="$HOME/.config/omaspot/kitty-overlay.conf"
+
+export PYTHONDONTWRITEBYTECODE=1      # no __pycache__ in the plugin folder: the shell reloads plugins on changes
+
+run_here() {
+    PYTHONPATH="$here/..${PYTHONPATH:+:$PYTHONPATH}" exec /usr/bin/python3 -m omaspot "$@"
+}
+
+case " $* " in
+    *" --here "*)
+        for a do shift; [ "$a" = --here ] || set -- "$@" "$a"; done     # drop --here, keep other args intact
+        run_here "$@" ;;
+    *" --login "*|*" --check "*|*" -h "*|*" --help "*) run_here "$@" ;;
+esac
+[ -n "$OMASPOT_WINDOW" ] && run_here "$@"
+
+# Opened as an app (launcher, terminal): Omaspot comes to the current workspace. If its window already exists
+# (in the Super+M overlay or another workspace) it's moved here and focused, never a second copy; otherwise a
+# new tiled window opens here. (Absolute path: app launchers don't always have ~/.local/bin on PATH.)
+overlay="$HOME/.local/bin/omaspot-overlay"
+if [ -x "$overlay" ] && command -v hyprctl >/dev/null 2>&1 && "$overlay" here; then
+    exit 0
+fi
+
+if ! command -v kitty >/dev/null 2>&1 || [ ! -f "$conf" ]; then
+    echo "omaspot: kitty or $conf not found, running in this terminal" >&2
+    run_here "$@"
+fi
+
+# detached, so closing the terminal you typed this in doesn't close omaspot
+setsid -f kitty -c "$conf" --class omaspot --title omaspot \
+    env OMASPOT_WINDOW=1 "$here/omaspot" "$@" >/dev/null 2>&1 </dev/null

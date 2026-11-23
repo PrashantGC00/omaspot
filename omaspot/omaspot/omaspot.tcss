@@ -1,0 +1,167 @@
+/* omaspot's layout and colours. $v… variables come from theme.Colors.css() (Omarchy theme + album accent). */
+Screen { background: $vbg; color: $vfg; }
+/* the right-click menu and the help are screens too: without these the rule above painted them solid over
+   the whole window (the UI vanished behind a menu). Menu: see-through; help: dims what's behind it. */
+Menu { background: transparent; }
+Help { background: $vbg 55%; }
+/* kitty has no padding; omaspot keeps its own inset from the window edge */
+#frame { border: none; padding: 1 2; margin: 0; background: $vbg; }
+
+#titlebar { height: 1; background: $vpanel; margin-bottom: 1; }
+#brand { width: auto; padding: 0 1; color: $vacc; text-style: bold; }
+#w-unfocus { display: none; min-width: 3; width: 3; height: 1; border: none; padding: 0; margin-right: 1; background: $vpanel; color: $vacc; text-style: none; }
+#w-unfocus:hover { color: $vhi; background: $vpanel; }
+#w-unfocus:focus { text-style: none; }
+#hist { width: auto; height: 1; padding: 0 1 0 0; }
+#hist IconButton { min-width: 3; width: 3; height: 1; border: none; padding: 0; background: $vpanel; color: $vacc; text-style: none; }
+#hist IconButton:hover { color: $vhi; background: $vpanel; }
+#hist IconButton.off { color: $vdim; }
+#crumb { width: 1fr; color: $vsoft; text-wrap: nowrap; text-overflow: ellipsis; }
+#search { width: 40; height: 1; margin-right: 1; border: none; border-left: vkey $vdim; border-right: vkey $vdim; padding: 0 1; background: $vbg; color: $vhi; }
+#search:focus { border: none; border-left: vkey $vsoft; border-right: vkey $vsoft; background: $vbg; }
+#search > .input--placeholder { color: $vaccdim; }
+
+#body { height: 1fr; border-top: solid $vdim; border-bottom: solid $vdim; }
+#side { width: 26; background: $vpanel; border-right: solid $vdim; padding: 1 0; scrollbar-size-vertical: 0; }
+#side > ListItem { background: $vpanel; padding: 0 1; }
+#side > ListItem.-highlight, #side > ListItem.--highlight { background: $vaccbg; }
+#side:focus > ListItem.-highlight, #side:focus > ListItem.--highlight { background: $vaccbg; }
+#side > ListItem:hover { background: $vhover; }
+#side > ListItem:disabled, #side > ListItem:disabled:hover { background: $vpanel; }
+.navrow { height: 1; width: 100%; }
+.navrow > .thumb { width: 2; height: 1; }
+.navrow > Label { width: 1fr; margin-left: 2; }
+#side > ListItem.pl { margin-bottom: 1; }
+#side > ListItem.pl .navrow { height: 2; }
+#side > ListItem.pl .navrow > .thumb { width: 4; height: 2; content-align: center middle; }
+#side > ListItem.pl .navrow > Label { margin-left: 1; }
+
+#main { width: 1fr; padding: 1 2 0 3; }
+#hero { height: auto; margin-bottom: 1; }
+#cover { width: 22; height: 11; background: $vsel; color: $vacc; content-align: center middle; text-style: bold; }
+#hinfo { width: 1fr; height: 11; padding: 0 2 0 3; align-vertical: bottom; }
+#hdr { height: 8; content-align: left bottom; }   /* kitty: big title drawn over it (hero.py) */
+#acts { height: 1; margin-top: 1; }
+#acts IconButton { width: auto; min-width: 8; height: 1; border: none; padding: 0 1; margin-right: 2; background: transparent; color: $vacc; text-style: none; }
+#acts IconButton:hover { background: transparent; color: $vhi; }
+#acts #a-play { color: $vacc; text-style: bold; }
+#ttitle { height: 2; color: $vhi; text-style: bold; margin-bottom: 1; content-align: left bottom; }
+
+DataTable { background: $vbg; height: 1fr; scrollbar-size-vertical: 1; scrollbar-background: $vbg; scrollbar-background-hover: $vbg; scrollbar-background-active: $vbg; scrollbar-color: $vdim; scrollbar-color-hover: $vsoft; scrollbar-color-active: $vsoft; }
+DataTable:focus, ListView:focus, #side:focus { background-tint: $vbg 0%; }
+DataTable > .datatable--even-row, DataTable > .datatable--odd-row { background: $vbg; }
+#thead { color: $vaccdim; text-style: bold; border-bottom: solid $vdim; height: 2; }
+DataTable > .datatable--header { background: $vbg; color: $vdim; text-style: bold; }
+DataTable > .datatable--cursor { background: $vsel; }
+DataTable > .datatable--hover { background: $vhover; }
+
+#grid { height: 1fr; scrollbar-size-vertical: 1; scrollbar-background: $vbg; scrollbar-background-hover: $vbg; scrollbar-background-active: $vbg; scrollbar-color: $vdim; scrollbar-color-hover: $vsoft; scrollbar-color-active: $vsoft; }
+#grid:focus { background-tint: $vbg 0%; }
+.greet { height: 4; color: $vhi; text-style: bold; content-align: left bottom; margin-bottom: 1; }
+.ghead { height: 2; margin-bottom: 1; }
+.ghead > .more { height: 2; content-align: left bottom; }
+.gt { width: 1fr; height: 2; color: $vhi; text-style: bold; content-align: left bottom; }
+.more { width: auto; color: $vaccdim; padding-right: 2; }
+.more:hover { color: $vacc; }
+.trow { height: auto; margin-bottom: 1; }
+.gap1 { height: 1; }
+.tile { width: 16; height: auto; margin-right: 2; }
+.tile > .art { width: 16; background: $vsel; color: $vaccdim; content-align: center middle; }
+.tile > .tt { height: 1; color: $vfg; text-style: bold; margin-top: 1; }
+.tile > .ts { height: 1; color: $vsoft; }
+.tile:hover > .tt { color: $vacc; }
+.tile.ph > .tt, .tile.ph > .ts { color: $vaccdim; }
+#empty { height: 1fr; content-align: center middle; text-align: center; display: none; }
+
+#qpanel { width: 38; display: none; background: $vpanel; border-left: solid $vdim; padding: 1 1 0 2; }
+#qtitle { height: 1; color: $vhi; text-style: bold; }
+.qlabel { height: 1; color: $vaccdim; text-style: bold; margin: 1 0; }
+#qnow { height: auto; }
+#qlist { height: 1fr; scrollbar-size-vertical: 1; scrollbar-background: $vpanel; scrollbar-background-hover: $vpanel; scrollbar-background-active: $vpanel; scrollbar-color: $vdim; scrollbar-color-hover: $vsoft; scrollbar-color-active: $vsoft; }
+#qempty { color: $vdim; height: auto; }
+.qrow { height: 2; margin-bottom: 1; }
+.qrow > .qart { width: 4; height: 2; background: $vsel; }
+.qrow > .qtxt { width: 1fr; height: 2; padding-left: 1; text-wrap: nowrap; text-overflow: ellipsis; }
+.tile > .tt, .tile > .ts { text-wrap: nowrap; text-overflow: ellipsis; }
+
+#player { height: 3; background: $vpanel; padding: 1 1 0 1; }
+#npbox { width: 1fr; min-width: 30; height: 2; }   /* keeps room for the title section in narrow windows */
+#mini { width: 4; height: 2; }
+#npcol { width: 1fr; height: 2; padding: 0 1; }
+#nprow { width: 100%; height: 1; }
+#np { width: 1fr; max-width: 28; height: 1; }   /* a fixed 28-cell title section (narrower only when the bar is); longer titles scroll in it (Marquee); the Turntable icon sits right after it */
+#npartist { width: 100%; max-width: 28; height: 1; color: $vsoft; pointer: pointer; }
+#npartist:hover { color: $vacc; }
+#nprow IconButton { min-width: 3; width: 3; height: 1; border: none; padding: 0; margin-left: 2; background: $vpanel; color: $vacc; text-style: none; }
+#nprow IconButton:hover { color: $vhi; background: $vpanel; }
+#ctr { width: 2fr; max-width: 60; min-width: 36; height: 2; align-horizontal: center; }   /* full 60 when there is room */
+Transport { width: 100%; height: 2; }
+Transport .btns { width: 100%; height: 1; padding: 0 15; }   /* equal padding keeps the row centred over the seek bar */
+Transport .gap { width: 1fr; height: 1; }
+Transport IconButton { min-width: 4; width: 4; height: 1; border: none; background: $vpanel; color: $vaccdim; padding: 0; text-style: none; }
+Transport IconButton:hover { color: $vhi; background: $vpanel; }
+Transport IconButton.on { color: $vacc; text-style: bold; }
+Transport IconButton.play { color: $vacc; text-style: bold; width: 5; min-width: 5; margin: 0; }
+Transport .seekrow { width: 100%; height: 1; }
+Transport .pos, Transport .len { width: 7; color: $vsoft; padding: 0 1; }
+Transport .pos { text-align: right; }
+Transport .seek { width: 1fr; height: 1; }
+#rt { width: 1fr; height: 2; align-horizontal: right; }
+#rtrow, VolumeRow { width: auto; height: 1; }
+#rtrow IconButton { min-width: 3; width: 3; height: 1; border: none; padding: 0; margin-right: 1; background: $vpanel; color: $vaccdim; text-style: none; }
+#rtrow IconButton:hover { color: $vhi; background: $vpanel; }
+#rtrow IconButton.on { color: $vacc; }
+#dev { width: auto; color: $vsoft; }
+VolumeRow .volic { width: 3; color: $vacc; }
+VolumeRow .vol { width: 10; height: 1; }
+#focus { display: none; height: 1fr; }
+#fctl { height: 4; padding: 1 2 0 2; background: $vbg; }
+#f-np { width: 1fr; height: 3; text-wrap: nowrap; text-overflow: ellipsis; }
+#fctr { width: 60; height: 3; align-vertical: middle; align-horizontal: center; }
+#frt { width: 1fr; height: 3; align-horizontal: right; align-vertical: middle; }
+#fctl Transport IconButton, #fctl Transport IconButton:hover { background: $vbg; }   /* see-through focus view: no panel boxes */
+
+/* Preferences page (prefs.py) */
+Preferences { height: auto; }   /* grow to fit its rows, so #prefs scrolls (it was clipped at the window) */
+#prefs { height: 1fr; display: none; scrollbar-size-vertical: 1; scrollbar-background: $vbg; scrollbar-background-hover: $vbg; scrollbar-background-active: $vbg; scrollbar-color: $vdim; scrollbar-color-hover: $vsoft; scrollbar-color-active: $vsoft; }
+.ptitle { height: 3; content-align: left bottom; padding: 0 1; }
+.psub { height: 1; padding: 0 1; margin-bottom: 1; }
+.psection { height: 2; content-align: left bottom; margin-bottom: 1; padding: 0 1; }
+.prow { height: 2; margin-bottom: 1; padding: 0 1; align-vertical: middle; }
+.prow:hover { background: $vhover; }
+.prow:focus { background: $vaccbg; }
+.prow.off { text-opacity: 45%; }
+.ptext { width: 1fr; height: 2; }
+.plabel, .pdesc { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
+.ptoggle { width: 10; height: 1; }
+.pslider { width: 26; height: 1; }
+.pvalue { width: 6; height: 1; }
+.prow.swatches { height: 4; align-vertical: top; }
+.pctl { width: 64; height: 4; }
+.pswatch { height: 2; }
+.pcustom { height: 1; margin-top: 1; }
+.pclabel { width: 15; height: 1; }
+.pcprev { width: 7; height: 1; }
+.phex { height: 1; width: 12; border: none; padding: 0 1; background: $vsel; color: $vhi; }
+.pchint { width: auto; height: 1; margin-left: 2; }
+.phex:focus { border: none; background: $vaccbg; }
+.phex > .input--placeholder { color: $vdim; }
+.pfoot { height: 2; content-align: left bottom; padding: 0 1; }
+
+/* the mouse pointer turns into a hand over everything clickable (Textual's pointer property; kitty shows it) */
+IconButton, Tile, Link, Slider, PrefSlider, Swatches, PrefRow, Head, QRow, #side > ListItem, Tracks, #w-unfocus { pointer: pointer; }
+#side > ListItem:disabled { pointer: default; }
+
+/* no song loaded: the player controls are greyed out and inert (app.has_song) */
+Transport.idle, VolumeRow.idle { text-opacity: 35%; }
+Transport.idle IconButton, Transport.idle Slider, VolumeRow.idle Slider { pointer: default; }
+Transport.idle IconButton:hover { color: $vaccdim; }
+
+/* Preferences > Keyboard shortcuts */
+.prow.key { height: 1; margin-bottom: 0; }         /* one line per shortcut: what it does … its key */
+.prow.key .ptext { height: 1; }
+.prow.key .pdesc { display: none; }
+.pkey { width: 52; height: 1; content-align: right middle; }
+.prow.capturing { background: $vaccbg; }
+.pfixed { height: auto; padding: 1 1 0 1; }
+.prow.action { margin-top: 1; }

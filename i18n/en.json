@@ -1,0 +1,12 @@
+{
+  "tooltip.setup": "Omaspot: click to set it up",
+  "tooltip.idle": "Omaspot: click to open",
+  "tooltip.playing": "%1 — %2",
+  "setup.title": "Set up Omaspot",
+  "setup.body": "A drop-down Spotify player for Omarchy. The guided setup takes a few minutes: it asks for your Spotify developer credentials, installs Soloist (Spotify's player) and media keys, sets up Super+M, and pairs once with your phone.",
+  "setup.premium": "Needs Spotify Premium.",
+  "setup.install": "Install",
+  "media.nothing": "Nothing playing",
+  "media.open": "Open Omaspot",
+  "media.check": "Check setup"
+}
